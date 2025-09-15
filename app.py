@@ -1,38 +1,48 @@
 import json
 from urllib.parse import urljoin
 import re
+import os
 
 import duckdb
 import pandas as pd
 import requests
 import streamlit as st
 
-# ===== Page + style =====
+# ---------- Page + style ----------
 st.set_page_config(page_title="ARMS Performance Entity Viewer", layout="wide")
-st.title("ARMS Performance Entity Viewer")
+ACCENT = "#78D1FA"
+STREAMLIT_RED = "#ff4a48"  # unused now, can remove later if you want
+BG_MAIN = "#272733"
+BG_CARD = "#12161C"
+TEXT = "#E8EEF2"
+
+SIDEBAR_W = 480  # <— tweak this until long client names fit
 
 st.markdown(
-    """
+    f"""
     <style>
-    [data-testid="stSidebar"] { min-width: 420px; max-width: 420px; }
-    [data-testid="stSidebar"] input { width: 100% !important; }
+      /* Wider sidebar so long client names fit */
+      [data-testid="stSidebar"] {{
+        min-width: {SIDEBAR_W}px;
+        max-width: {SIDEBAR_W}px;
+      }}
+      /* A little breathing room below the logo */
+      [data-testid="stSidebar"] img:first-of-type {{
+        display:block; margin-bottom:20px;
+      }}
     </style>
     """,
     unsafe_allow_html=True
 )
 
-CLIENTS = [
-    "afcbournemouth9456.edge10online.co.uk",
-    "newcastleunited7703.edge10online.co.uk",
-    "amazulufc4646.edge10online.co.uk",
-    "qpr1882.edge10online.co.uk",
-    "oxfordunited1893.edge10online.co.uk",
-    "northamptontownfc.edge10online.co.uk",
-    "cheltenhamtownfc.edge10online.co.uk",
-    "solihullmoors2007.edge10online.co.uk",
-]
+st.markdown(
+    f"<h1 style='margin:0.2rem 0 1rem 0; color:{ACCENT};'>ARMS Performance Entity Viewer</h1>",
+    unsafe_allow_html=True
+)
 
-# ===== Helpers =====
+
+
+# ---------- Helpers ----------
 def build_url(site: str, endpoint: str) -> str:
     site = (site or "").strip().rstrip("/")
     if not site.startswith("http"):
@@ -51,7 +61,6 @@ def to_df(payload):
     return pd.DataFrame()
 
 def add_player_name_col(df: pd.DataFrame) -> pd.DataFrame:
-    """Create 'Player Name' = firstName + ' ' + lastName and insert as first column."""
     f = next((c for c in df.columns if c.lower() == "firstname"), None)
     l = next((c for c in df.columns if c.lower() == "lastname"), None)
     if f and l:
@@ -59,14 +68,13 @@ def add_player_name_col(df: pd.DataFrame) -> pd.DataFrame:
             df[f].astype(str).fillna("").str.strip()
             + " "
             + df[l].astype(str).fillna("").str.strip()
-        ).str.replace(r"\s+", " ", regex=True).str.strip()
+        ).str.replace(r"\\s+", " ", regex=True).str.strip()
         if "Player Name" in df.columns:
             df = df.drop(columns=["Player Name"])
         df.insert(0, "Player Name", pn)
     return df
 
 def ensure_duck(df: pd.DataFrame):
-    """Single in-memory DuckDB connection; (re)register df as api_data."""
     if "duck" not in st.session_state or st.session_state.get("duck_closed", False):
         st.session_state.duck = duckdb.connect(database=":memory:")
         st.session_state.duck_closed = False
@@ -90,18 +98,37 @@ def reset_state():
     ):
         st.session_state.pop(k, None)
 
-# ===== Sidebar =====
-with st.sidebar:
-    st.header("Connection")
+# ---------- Known clients ----------
+CLIENTS = [
+    "afcbournemouth9456.edge10online.co.uk",
+    "newcastleunited7703.edge10online.co.uk",
+    "amazulufc4646.edge10online.co.uk",
+    "qpr1882.edge10online.co.uk",
+    "oxfordunited1893.edge10online.co.uk",
+    "northamptontownfc.edge10online.co.uk",
+    "cheltenhamtownfc.edge10online.co.uk",
+    "solihullmoors2007.edge10online.co.uk",
+]
 
-    # Pick a known client or choose Other
+# ---------- Sidebar (logo + headers + inputs) ----------
+with st.sidebar:
+    # Logo ABOVE "CONNECTION"
+    logo_path = "ARMS_Performance_Logo_White_Alt.png"  # make sure this file is in the repo
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=160)
+
+    # CONNECTION header (red)
+    st.markdown(
+        f"<h3 style='color:{ACCENT}; font-weight:800; margin:.25rem 0;'>CONNECTION</h3>",
+        unsafe_allow_html=True
+    )
+
     client_choice = st.selectbox(
         "Client",
         options=CLIENTS + ["Other (enter below)"],
         help="Pick a client from the list or choose Other to type a new site."
     )
 
-    # Site name text box
     if client_choice == "Other (enter below)":
         site = st.text_input(
             "Site name",
@@ -122,7 +149,11 @@ with st.sidebar:
         help="Example: api/entity/ or api/entity/template",
     )
 
-    st.header("Auth")
+    # LOGIN header (accent)
+    st.markdown(
+        f"<h3 style='color:{ACCENT}; font-weight:800; margin:1rem 0 .25rem;'>LOGIN</h3>",
+        unsafe_allow_html=True
+    )
     user = st.text_input("Username")
     pwd = st.text_input("Password", type="password")
 
@@ -132,12 +163,17 @@ with st.sidebar:
     with c2:
         clear = st.button("Reset")
 
+# Single, visible title in the MAIN area (no duplicates)
+st.markdown(
+    "<h1 style='margin:0.2rem 0 1rem 0; color:#505050;'>ARMS Performance Entity Viewer</h1>",
+    unsafe_allow_html=True
+)
 
 if clear:
     reset_state()
     st.experimental_rerun()
 
-# ===== Fetch =====
+# ---------- Fetch ----------
 if run:
     if not site or not endpoint or not user or not pwd:
         st.error("Please fill site name, endpoint, username, and password")
@@ -180,13 +216,11 @@ if run:
             st.session_state.data = data
             st.session_state.df = df
 
-            # Init column selection once
             if "cols_to_show" not in st.session_state:
                 all_cols = df.columns.tolist()
                 st.session_state.cols_to_show = all_cols[: min(10, len(all_cols))]
                 st.session_state.last_nonempty_cols = st.session_state.cols_to_show
 
-            # Init contactType default = 1 once (if present)
             ct_col = next((c for c in df.columns if c.lower() == "contacttype"), None)
             if ct_col and "ct_filter" not in st.session_state:
                 uniq_ct = sorted(df[ct_col].dropna().astype(str).unique().tolist())
@@ -202,16 +236,14 @@ if run:
         except Exception:
             pass
 
-# ===== Render (if we have data) =====
+# ---------- Render ----------
 if "df" in st.session_state:
     df_base = st.session_state.df.copy()
     st.caption(f"GET {st.session_state.url}")
 
-    # ---- Filters ----
-    like_opts = []  # keep in scope for later filter apply
+    like_opts = []
     filt_exp = st.expander("Filters", expanded=True)
     with filt_exp:
-        # contactType
         ct_col = next((c for c in df_base.columns if c.lower() == "contacttype"), None)
         if ct_col:
             uniq_ct = sorted(df_base[ct_col].dropna().astype(str).unique().tolist())
@@ -219,10 +251,9 @@ if "df" in st.session_state:
                 "contactType",
                 options=uniq_ct,
                 key="ct_filter",
-                help="Players | Contact Type = 1; Staff | Contact Type = 2"
+                help="Contact Type = 1 : Player | Contact Type = 2 : Staff"
             )
 
-        # Player search (exact + LIKE + paste)
         if "Player Name" in df_base.columns:
             player_opts = sorted(df_base["Player Name"].dropna().unique().tolist())
             st.multiselect(
@@ -231,7 +262,6 @@ if "df" in st.session_state:
                 key="player_ms",
             )
 
-            # LIKE-style contains search (parameterized DuckDB ILIKE)
             st.text_input(
                 "Player contains (LIKE search). Example: Rol, dia",
                 key="player_like",
@@ -260,24 +290,15 @@ if "df" in st.session_state:
 
     # Apply filters
     df_filt = df_base.copy()
-
-    # contactType filter
     if ct_col and st.session_state.get("ct_filter"):
         df_filt = df_filt[df_filt[ct_col].astype(str).isin(st.session_state.ct_filter)]
 
-    # Build allowed names
-    allowed = set()
-
-    # exact picks
-    allowed |= set(st.session_state.get("player_ms", []) or [])
-
-    # LIKE picks or all LIKE matches if query provided and none picked
+    allowed = set(st.session_state.get("player_ms", []) or [])
     like_query_present = bool(st.session_state.get("player_like"))
     like_selected = set(st.session_state.get("player_like_ms", []) or [])
     if like_query_present:
         allowed |= (like_selected if like_selected else set(like_opts))
 
-    # pasted names with existence check
     pasted = st.session_state.get("player_free", "") or ""
     if pasted:
         pasted_set = {x.strip() for x in re.split(r"[,\n]", pasted) if x.strip()}
@@ -288,11 +309,10 @@ if "df" in st.session_state:
             st.warning("Not found: " + ", ".join(missing))
         allowed |= found
 
-    # apply player filter
     if "Player Name" in df_base.columns and allowed:
         df_filt = df_filt[df_filt["Player Name"].isin(allowed)]
 
-    # ---- Column chooser (never blanks) ----
+    # Choose columns
     all_cols = df_filt.columns.tolist()
     cols_to_show = st.multiselect(
         "Choose cols to show",
@@ -306,62 +326,20 @@ if "df" in st.session_state:
     if cols_to_show:
         st.session_state.last_nonempty_cols = cols_to_show
 
-    # Fast projection via DuckDB
+    # DuckDB projection
     con = ensure_duck(df_filt)
-    if cols_render:
-        select_list = ", ".join(quote_ident(c) for c in cols_render)
-        sql = f"SELECT {select_list} FROM api_data"
-    else:
-        sql = "SELECT * FROM api_data"
+    sql = f"SELECT {', '.join(quote_ident(c) for c in cols_render)} FROM api_data" if cols_render else "SELECT * FROM api_data"
     df_show = con.execute(sql).fetchdf()
 
-    st.success(
-        f"Rows: {len(df_filt)}  Cols: {len(df_filt.columns)}  |  Showing {len(df_show.columns)} columns"
-    )
+    st.success(f"Rows: {len(df_filt)}  Cols: {len(df_filt.columns)}  |  Showing {len(df_show.columns)} columns")
     st.dataframe(df_show, use_container_width=True)
 
-    # ---- Quick ID export ----
-  #  st.subheader("Quick ID export (optional)")
-  #  default_id_cols = [c for c in df_base.columns if c.lower() in {"id", "contactid"}]
-  #  id_cols = st.multiselect(
-  #      "Choose ID columns to export as a single list",
- #       options=df_base.columns.tolist(),
- #       default=default_id_cols
-  #  )
-  #  if id_cols:
-  #      try:
-  #          ids = pd.unique(pd.concat([df_base[c].astype(str) for c in id_cols], ignore_index=True).dropna())
-  #          ids_df = pd.DataFrame({"id": ids})
-  #          st.download_button(
-  #              "Download IDs CSV",
-  #              ids_df.to_csv(index=False).encode("utf-8"),
-  #              "ids.csv",
-  #              "text/csv",
-   #         )
-   #     except Exception as e:
-   #         st.error(f"Could not build ID list: {e}")
-
-    # ---- Downloads ----
+    # Downloads
     st.subheader("Downloads")
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.download_button(
-            "Download visible table CSV",
-            df_show.to_csv(index=False).encode("utf-8"),
-            "api_data_visible.csv",
-            "text/csv",
-        )
+        st.download_button("Download visible table CSV", df_show.to_csv(index=False).encode("utf-8"), "api_data_visible.csv", "text/csv")
     with c2:
-        st.download_button(
-            "Download filtered full table CSV",
-            df_filt.to_csv(index=False).encode("utf-8"),
-            "api_data_filtered.csv",
-            "text/csv",
-        )
+        st.download_button("Download filtered full table CSV", df_filt.to_csv(index=False).encode("utf-8"), "api_data_filtered.csv", "text/csv")
     with c3:
-        st.download_button(
-            "Download raw JSON",
-            json.dumps(st.session_state.data, indent=2).encode("utf-8"),
-            "api_raw.json",
-            "application/json",
-        )
+        st.download_button("Download raw JSON", json.dumps(st.session_state.data, indent=2).encode("utf-8"), "api_raw.json", "application/json")
