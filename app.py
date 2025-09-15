@@ -9,7 +9,6 @@ import requests
 import streamlit as st
 
 # ---------- Page + style ----------
-st.set_page_config(page_title="ARMS Performance Entity Viewer", layout="wide")
 ACCENT = "#78D1FA"
 STREAMLIT_RED = "#ff4a48"  # unused now, can remove later if you want
 BG_MAIN = "#272733"
@@ -162,12 +161,6 @@ with st.sidebar:
         run = st.button("Fetch", type="primary")
     with c2:
         clear = st.button("Reset")
-
-# Single, visible title in the MAIN area (no duplicates)
-st.markdown(
-    "<h1 style='margin:0.2rem 0 1rem 0; color:#505050;'>ARMS Performance Entity Viewer</h1>",
-    unsafe_allow_html=True
-)
 
 if clear:
     reset_state()
