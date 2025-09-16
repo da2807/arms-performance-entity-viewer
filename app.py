@@ -8,38 +8,70 @@ import pandas as pd
 import requests
 import streamlit as st
 
-# ---------- Page + style ----------
+# ---------- Page config ----------
+st.set_page_config(page_title="ARMS Performance Entity Viewer", layout="wide")
+
+# ---------- Theme + CSS ----------
 ACCENT = "#78D1FA"
-STREAMLIT_RED = "#ff4a48"  # unused now, can remove later if you want
 BG_MAIN = "#272733"
 BG_CARD = "#12161C"
 TEXT = "#E8EEF2"
+SIDEBAR_W = 480  # desktop width for expanded sidebar
 
-SIDEBAR_W = 480  # <— tweak this until long client names fit
+st.markdown(f"""
+<style>
+:root {{ --sidebar-width: {SIDEBAR_W}px; }}
 
-st.markdown(
-    f"""
-    <style>
-      /* Wider sidebar so long client names fit */
-      [data-testid="stSidebar"] {{
-        min-width: {SIDEBAR_W}px;
-        max-width: {SIDEBAR_W}px;
-      }}
-      /* A little breathing room below the logo */
-      [data-testid="stSidebar"] img:first-of-type {{
-        display:block; margin-bottom:20px;
-      }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+/* Fix half-collapsed sidebar: apply width only when expanded */
+section[data-testid="stSidebar"][aria-expanded="true"] {{
+  min-width: var(--sidebar-width);
+  max-width: var(--sidebar-width);
+}}
+section[data-testid="stSidebar"][aria-expanded="false"] {{
+  min-width: 0 !important;
+  max-width: 0 !important;
+}}
+
+/* Logo spacing */
+section[data-testid="stSidebar"] img:first-of-type {{
+  display:block; margin-bottom:20px;
+}}
+
+/* Mobile tweaks */
+@media (max-width: 768px) {{
+  /* Sidebar acts like an overlay drawer on phones */
+  section[data-testid="stSidebar"][aria-expanded="true"] {{
+    position: fixed;
+    z-index: 1000;
+    min-width: 85vw !important;
+    max-width: 85vw !important;
+  }}
+  section[data-testid="stSidebar"][aria-expanded="false"] {{
+    min-width: 0 !important;
+    max-width: 0 !important;
+  }}
+
+  /* Reduce main content side padding so the table uses the width */
+  .block-container {{
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }}
+
+  /* Title size */
+  h1, h2 {{ font-size: 1.35rem; }}
+
+  /* Make buttons and inputs a bit taller for touch */
+  button[kind="primary"], .stButton button, .stTextInput input {{
+    min-height: 40px;
+  }}
+}}
+</style>
+""", unsafe_allow_html=True)
 
 st.markdown(
     f"<h1 style='margin:0.2rem 0 1rem 0; color:{ACCENT};'>ARMS Performance Entity Viewer</h1>",
     unsafe_allow_html=True
 )
-
-
 
 # ---------- Helpers ----------
 def build_url(site: str, endpoint: str) -> str:
@@ -67,7 +99,7 @@ def add_player_name_col(df: pd.DataFrame) -> pd.DataFrame:
             df[f].astype(str).fillna("").str.strip()
             + " "
             + df[l].astype(str).fillna("").str.strip()
-        ).str.replace(r"\\s+", " ", regex=True).str.strip()
+        ).str.replace(r"\s+", " ", regex=True).str.strip()
         if "Player Name" in df.columns:
             df = df.drop(columns=["Player Name"])
         df.insert(0, "Player Name", pn)
@@ -97,6 +129,12 @@ def reset_state():
     ):
         st.session_state.pop(k, None)
 
+# Compatibility for rerun across Streamlit versions
+try:
+    RERUN = st.rerun
+except AttributeError:
+    RERUN = st.experimental_rerun  # older Streamlit
+
 # ---------- Known clients ----------
 CLIENTS = [
     "afcbournemouth9456.edge10online.co.uk",
@@ -109,14 +147,12 @@ CLIENTS = [
     "solihullmoors2007.edge10online.co.uk",
 ]
 
-# ---------- Sidebar (logo + headers + inputs) ----------
+# ---------- Sidebar ----------
 with st.sidebar:
-    # Logo ABOVE "CONNECTION"
-    logo_path = "ARMS_Performance_Logo_White_Alt.png"  # make sure this file is in the repo
+    logo_path = "ARMS_Performance_Logo_White_Alt.png"
     if os.path.exists(logo_path):
         st.image(logo_path, width=160)
 
-    # CONNECTION header (red)
     st.markdown(
         f"<h3 style='color:{ACCENT}; font-weight:800; margin:.25rem 0;'>CONNECTION</h3>",
         unsafe_allow_html=True
@@ -125,7 +161,7 @@ with st.sidebar:
     client_choice = st.selectbox(
         "Client",
         options=CLIENTS + ["Other (enter below)"],
-        help="Pick a client from the list or choose Other to type a new site."
+        help="Pick a client from the list or choose Other to type a new site"
     )
 
     if client_choice == "Other (enter below)":
@@ -139,16 +175,15 @@ with st.sidebar:
             "Site name",
             value=client_choice,
             disabled=True,
-            help="Selected from the client list"
+            help="Option to open if Other selected in Client"
         )
 
     endpoint = st.text_input(
         "Endpoint path",
         value="api/entity/",
-        help="Example: api/entity/ or api/entity/template",
+        help="Examples: api/entity/ OR api/template OR api/entity/groups OR for a full list of API calls check out sitename/swagger",
     )
 
-    # LOGIN header (accent)
     st.markdown(
         f"<h3 style='color:{ACCENT}; font-weight:800; margin:1rem 0 .25rem;'>LOGIN</h3>",
         unsafe_allow_html=True
@@ -164,7 +199,7 @@ with st.sidebar:
 
 if clear:
     reset_state()
-    st.experimental_rerun()
+    RERUN()
 
 # ---------- Fetch ----------
 if run:
@@ -209,9 +244,10 @@ if run:
             st.session_state.data = data
             st.session_state.df = df
 
+            # Default visible columns (limit to 8 initially for small screens)
             if "cols_to_show" not in st.session_state:
                 all_cols = df.columns.tolist()
-                st.session_state.cols_to_show = all_cols[: min(10, len(all_cols))]
+                st.session_state.cols_to_show = all_cols[: min(8, len(all_cols))]
                 st.session_state.last_nonempty_cols = st.session_state.cols_to_show
 
             ct_col = next((c for c in df.columns if c.lower() == "contacttype"), None)
@@ -235,7 +271,8 @@ if "df" in st.session_state:
     st.caption(f"GET {st.session_state.url}")
 
     like_opts = []
-    filt_exp = st.expander("Filters", expanded=True)
+    # Collapse by default (nicer on mobile)
+    filt_exp = st.expander("Filters", expanded=False)
     with filt_exp:
         ct_col = next((c for c in df_base.columns if c.lower() == "contacttype"), None)
         if ct_col:
@@ -314,7 +351,7 @@ if "df" in st.session_state:
         help="Controls which columns are visible and downloaded below."
     )
     cols_render = cols_to_show if cols_to_show else (
-        st.session_state.get("last_nonempty_cols") or all_cols[: min(10, len(all_cols))]
+        st.session_state.get("last_nonempty_cols") or all_cols[: min(8, len(all_cols))]
     )
     if cols_to_show:
         st.session_state.last_nonempty_cols = cols_to_show
