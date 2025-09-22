@@ -486,7 +486,7 @@ with tab_view:
         with c3:
             st.download_button("Download raw JSON", json.dumps(st.session_state.data, indent=2).encode("utf-8"), "api_raw.json", "application/json")
     else:
-        st.info("Fetch data on the View tab using the sidebar, then come back here.")
+        st.info("Fetch data on the VIEW tab using the sidebar")
 
 # ---------- Tab: Write data ----------
 with tab_write:
