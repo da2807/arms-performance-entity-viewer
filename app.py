@@ -217,7 +217,7 @@ if run:
                 url,
                 auth=requests.auth.HTTPBasicAuth(user, pwd),
                 headers={"Accept": "application/json"},
-                timeout=60,
+                timeout=(15,180),
             )
             if r.status_code >= 400:
                 status.update(label=f"HTTP {r.status_code}", state="error")
